@@ -2,7 +2,7 @@
 
 Preprocessing is the bridge between human-readable event fields and numeric
 model inputs. The rules here are intentionally simple for the first milestone so
-the extraction contract is easy to inspect, test, and explain in interviews.
+the extraction contract is easy to inspect and test.
 """
 
 from streamguard.domain import SecurityEvent

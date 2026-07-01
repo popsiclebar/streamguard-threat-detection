@@ -23,47 +23,58 @@ small but realistic backend system.
 
 StreamGuard simulates a lightweight threat-detection workflow:
 
-1. Security events are submitted through an API or streamed through a Kafka-compatible broker.
+1. Security events are submitted through a FastAPI endpoint.
 2. Events are validated and transformed into structured features.
-3. A detection component scores suspicious activity.
-4. Recent detection results and processed event markers are stored in Redis.
-5. FastAPI exposes endpoints for detection, health checks, and result retrieval.
+3. A transparent baseline component scores suspicious activity.
+4. FastAPI exposes endpoints for direct detection and health checks.
+5. Later milestones will add Kafka ingestion, Redis state, and vector search.
 
-### What It Can Do
+### Current Capabilities
 
-The first MVP is planned to support:
+The current Milestone 1 slice supports:
 
 - Submit security events through a FastAPI endpoint.
 - Validate incoming events with typed Pydantic schemas.
 - Transform events into structured features for anomaly scoring.
-- Process events from a Kafka-compatible streaming topic.
-- Store recent detections and processed event IDs in Redis.
-- Route invalid messages to a dead-letter flow.
-- Run locally with Docker Compose.
+- Score events with an honest rule-based baseline.
+- Return versioned detection results.
+- Expose health and readiness endpoints.
 - Provide unit and API tests for core behavior.
+
+Planned later milestones include Kafka-compatible streaming ingestion, Redis
+operational state, dead-letter handling, Qdrant similarity search, and trained
+scikit-learn/PyTorch model backends.
 
 ## Built With
 
-Planned core stack:
+Current stack:
 
 - Python
 - FastAPI
 - Pydantic
-- Kafka-compatible local broker
-- Redis
-- Docker / Docker Compose
 - pytest
 - Ruff
+
+Planned additions:
+
+- Kafka-compatible local broker
+- Redis
+- Qdrant
+- Docker / Docker Compose
+- scikit-learn
+- PyTorch
 
 ## Getting Started
 
 ### Prerequisites
 
-Planned local requirements:
+Local requirements:
 
 - Python 3.12+
-- Docker Desktop or another Docker-compatible runtime
 - Git
+
+Docker Desktop or another Docker-compatible runtime will be needed for later
+Kafka, Redis, and Qdrant milestones.
 
 ### Installation
 
@@ -77,31 +88,44 @@ cd streamguard-threat-detection
 Create a local environment:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install dependencies once they are added:
+Install dependencies:
 
 ```bash
-pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 ```
 
 ## Usage
 
-Planned local workflow:
+Run tests:
 
 ```bash
-docker compose up --build
+python3 -m pytest -q
 ```
 
-Planned direct API workflow:
+Run lint checks:
 
 ```bash
-uvicorn apps.api.main:app --reload
+python3 -m ruff check apps src tests
 ```
 
-Planned detection request:
+Run the direct API workflow:
+
+```bash
+python3 -m uvicorn apps.api.main:app --reload
+```
+
+Health checks:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/ready
+```
+
+Detection request:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/detections \
@@ -109,12 +133,18 @@ curl -X POST http://localhost:8000/api/v1/detections \
   -d @data/sample/example_event.json
 ```
 
+Interactive API docs are available locally at:
+
+```text
+http://localhost:8000/docs
+```
+
 ## Roadmap
 
-- [ ] Define versioned security-event and detection-result schemas.
-- [ ] Implement feature extraction and baseline anomaly scoring.
-- [ ] Add FastAPI health and detection endpoints.
-- [ ] Add unit and API tests.
+- [x] Define versioned security-event and detection-result schemas.
+- [x] Implement feature extraction and baseline anomaly scoring.
+- [x] Add FastAPI health and detection endpoints.
+- [x] Add unit and API tests.
 - [ ] Add Docker Compose for local services.
 - [ ] Add Kafka-compatible event ingestion.
 - [ ] Add Redis recent-result storage and idempotency.

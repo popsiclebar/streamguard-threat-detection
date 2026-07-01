@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "event_id": "50e7935d-8c80-49ef-9613-a846c88b1220",
+  "timestamp": "2026-06-22T08:30:00Z",
+  "source_ip": "10.10.1.12",
+  "destination_ip": "172.16.0.20",
+  "source_port": 52311,
+  "destination_port": 22,
+  "protocol": "TCP",
+  "duration_ms": 192.4,
+  "source_bytes": 1450,
+  "destination_bytes": 8300,
+  "packet_count": 20,
+  "failed_connections": 12,
+  "tcp_flag_count": 4
+}
