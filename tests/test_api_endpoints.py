@@ -6,7 +6,20 @@ schema, feature extraction, scoring, and service code as the internal tests.
 
 from fastapi.testclient import TestClient
 
+from apps.api.dependencies import (
+    get_alert_repository,
+    get_detection_service,
+    get_processed_event_repository,
+)
 from apps.api.main import create_app
+
+
+def api_client() -> TestClient:
+    """Create a test client with fresh cached dependencies for isolation."""
+    get_detection_service.cache_clear()
+    get_alert_repository.cache_clear()
+    get_processed_event_repository.cache_clear()
+    return TestClient(create_app())
 
 
 def event_payload(**overrides: object) -> dict[str, object]:
@@ -33,7 +46,7 @@ def event_payload(**overrides: object) -> dict[str, object]:
 
 def test_health_endpoint_reports_alive() -> None:
     """The simple health endpoint should be available for local smoke checks."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.get("/health")
 
@@ -43,7 +56,7 @@ def test_health_endpoint_reports_alive() -> None:
 
 def test_ready_endpoint_reports_baseline_model_ready() -> None:
     """Readiness should describe the current local dependencies honestly."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.get("/health/ready")
 
@@ -59,7 +72,7 @@ def test_ready_endpoint_reports_baseline_model_ready() -> None:
 
 def test_learning_health_test_endpoint_reports_message() -> None:
     """The temporary learning endpoint should confirm reload experiments work."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.get("/health/test")
 
@@ -69,7 +82,7 @@ def test_learning_health_test_endpoint_reports_message() -> None:
 
 def test_detection_endpoint_scores_valid_event() -> None:
     """A valid event request should return the service's detection result."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.post("/api/v1/detections", json=event_payload())
 
@@ -85,7 +98,7 @@ def test_detection_endpoint_scores_valid_event() -> None:
 
 def test_detection_endpoint_scores_suspicious_event_as_anomaly() -> None:
     """Suspicious input should cross the baseline threshold through the API path."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.post(
         "/api/v1/detections",
@@ -101,7 +114,7 @@ def test_detection_endpoint_scores_suspicious_event_as_anomaly() -> None:
 
 def test_detection_endpoint_rejects_invalid_event() -> None:
     """FastAPI should use the Pydantic schema to reject malformed requests."""
-    client = TestClient(create_app())
+    client = api_client()
 
     response = client.post(
         "/api/v1/detections",
@@ -109,3 +122,74 @@ def test_detection_endpoint_rejects_invalid_event() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_alerts_endpoint_lists_detections_saved_by_api() -> None:
+    """The API should expose recent detection results saved by DetectionService."""
+    client = api_client()
+    detection_response = client.post("/api/v1/detections", json=event_payload())
+
+    response = client.get("/api/v1/alerts")
+
+    assert detection_response.status_code == 200
+    assert response.status_code == 200
+    alerts = response.json()
+    assert len(alerts) == 1
+    assert alerts[0]["detection_id"] == detection_response.json()["detection_id"]
+
+
+def test_alerts_endpoint_filters_by_minimum_score() -> None:
+    """Recent alerts can be filtered to show only higher-scoring detections."""
+    client = api_client()
+    client.post("/api/v1/detections", json=event_payload())
+    client.post(
+        "/api/v1/detections",
+        json=event_payload(
+            event_id="11111111-1111-1111-1111-111111111111",
+            destination_port=22,
+            failed_connections=12,
+            packet_count=20,
+        ),
+    )
+
+    response = client.get("/api/v1/alerts?minimum_score=0.7")
+
+    assert response.status_code == 200
+    alerts = response.json()
+    assert len(alerts) == 1
+    assert alerts[0]["is_anomaly"] is True
+
+
+def test_alert_by_id_endpoint_returns_detection() -> None:
+    """A saved detection should be retrievable through the alert detail endpoint."""
+    client = api_client()
+    detection_response = client.post("/api/v1/detections", json=event_payload())
+    detection_id = detection_response.json()["detection_id"]
+
+    response = client.get(f"/api/v1/alerts/{detection_id}")
+
+    assert response.status_code == 200
+    assert response.json()["detection_id"] == detection_id
+
+
+def test_alert_by_id_endpoint_returns_404_for_missing_detection() -> None:
+    """Missing alert IDs should produce an HTTP 404 response."""
+    client = api_client()
+
+    response = client.get("/api/v1/alerts/00000000-0000-0000-0000-000000000001")
+
+    assert response.status_code == 404
+
+
+def test_detection_endpoint_is_idempotent_for_repeated_event_id() -> None:
+    """Posting the same event twice should return the original detection result."""
+    client = api_client()
+
+    first_response = client.post("/api/v1/detections", json=event_payload())
+    second_response = client.post("/api/v1/detections", json=event_payload())
+    alerts_response = client.get("/api/v1/alerts")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["detection_id"] == first_response.json()["detection_id"]
+    assert len(alerts_response.json()) == 1

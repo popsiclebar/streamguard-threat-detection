@@ -26,8 +26,9 @@ StreamGuard simulates a lightweight threat-detection workflow:
 1. Security events are submitted through a FastAPI endpoint.
 2. Events are validated and transformed into structured features.
 3. A transparent baseline component scores suspicious activity.
-4. FastAPI exposes endpoints for direct detection and health checks.
-5. Later milestones will add Kafka ingestion, Redis state, and vector search.
+4. Recent detection results are stored in process-local memory for retrieval.
+5. FastAPI exposes endpoints for direct detection, recent alerts, and health checks.
+6. Later milestones will add Kafka ingestion, Redis state, and vector search.
 
 ### Current Capabilities
 
@@ -38,12 +39,16 @@ The current Milestone 1 slice supports:
 - Transform events into structured features for anomaly scoring.
 - Score events with an honest rule-based baseline.
 - Return versioned detection results.
+- Store recent detection results in memory while the API process is running.
+- Optionally store recent detection results in Redis.
+- Track processed event IDs for idempotent repeated detection requests.
+- Retrieve recent alerts and individual alert details through the API.
 - Expose health and readiness endpoints.
 - Provide unit and API tests for core behavior.
 
 Planned later milestones include Kafka-compatible streaming ingestion, Redis
-operational state, dead-letter handling, Qdrant similarity search, and trained
-scikit-learn/PyTorch model backends.
+operational state, persistence across restarts, dead-letter handling, Qdrant
+similarity search, and trained scikit-learn/PyTorch model backends.
 
 ## Built With
 
@@ -58,9 +63,8 @@ Current stack:
 Planned additions:
 
 - Kafka-compatible local broker
-- Redis
 - Qdrant
-- Docker / Docker Compose
+- Docker / Docker Compose for the full local stack
 - scikit-learn
 - PyTorch
 
@@ -74,7 +78,7 @@ Local requirements:
 - Git
 
 Docker Desktop or another Docker-compatible runtime will be needed for later
-Kafka, Redis, and Qdrant milestones.
+Kafka and Qdrant milestones. Redis can already be run with Docker Compose.
 
 ### Installation
 
@@ -118,6 +122,15 @@ Run the direct API workflow:
 python3 -m uvicorn apps.api.main:app --reload
 ```
 
+By default, recent alerts and processed-event markers are stored in process
+memory. To use Redis for that operational state, start Redis and enable the
+Redis repository backend:
+
+```bash
+docker compose up -d redis
+ALERT_REPOSITORY_BACKEND=redis python3 -m uvicorn apps.api.main:app --reload
+```
+
 Health checks:
 
 ```bash
@@ -133,6 +146,22 @@ curl -X POST http://localhost:8000/api/v1/detections \
   -d @data/sample/example_event.json
 ```
 
+Posting the same `event_id` again returns the original detection result while
+the processed-event marker and alert detail are still retained.
+
+Recent alerts:
+
+```bash
+curl http://localhost:8000/api/v1/alerts
+curl "http://localhost:8000/api/v1/alerts?minimum_score=0.7"
+```
+
+Alert detail:
+
+```bash
+curl http://localhost:8000/api/v1/alerts/{detection_id}
+```
+
 Interactive API docs are available locally at:
 
 ```text
@@ -144,10 +173,13 @@ http://localhost:8000/docs
 - [x] Define versioned security-event and detection-result schemas.
 - [x] Implement feature extraction and baseline anomaly scoring.
 - [x] Add FastAPI health and detection endpoints.
+- [x] Add in-memory recent alert retrieval.
 - [x] Add unit and API tests.
-- [ ] Add Docker Compose for local services.
+- [x] Add Redis-backed recent alert repository.
+- [x] Add Docker Compose Redis service.
 - [ ] Add Kafka-compatible event ingestion.
-- [ ] Add Redis recent-result storage and idempotency.
+- [x] Add Redis processed-event idempotency markers.
+- [ ] Add Redis operational counters.
 - [ ] Add dead-letter handling for invalid events.
 - [ ] Add CI with linting and tests.
 - [ ] Document architecture, limitations, and demo commands.

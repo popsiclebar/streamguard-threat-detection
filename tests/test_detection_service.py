@@ -8,6 +8,10 @@ result.
 from uuid import UUID
 
 from streamguard.domain import DetectionResult, SecurityEvent
+from streamguard.infrastructure.memory import (
+    InMemoryAlertRepository,
+    InMemoryProcessedEventRepository,
+)
 from streamguard.services import DetectionService
 
 
@@ -77,3 +81,49 @@ def test_detection_service_generates_unique_detection_ids() -> None:
     second_result = service.detect(event)
 
     assert first_result.detection_id != second_result.detection_id
+
+
+def test_detection_service_saves_result_when_repository_is_configured() -> None:
+    """DetectionService should persist completed results through its repository."""
+    repository = InMemoryAlertRepository()
+    event = SecurityEvent.model_validate(event_payload())
+    service = DetectionService(alert_repository=repository)
+
+    result = service.detect(event)
+
+    assert repository.list_recent() == [result]
+
+
+def test_detection_service_returns_existing_result_for_duplicate_event_id() -> None:
+    """Configured idempotency should prevent duplicate detections for one event ID."""
+    alert_repository = InMemoryAlertRepository()
+    processed_repository = InMemoryProcessedEventRepository()
+    event = SecurityEvent.model_validate(event_payload())
+    service = DetectionService(
+        alert_repository=alert_repository,
+        processed_event_repository=processed_repository,
+    )
+
+    first_result = service.detect(event)
+    second_result = service.detect(event)
+
+    assert second_result == first_result
+    assert alert_repository.list_recent() == [first_result]
+
+
+def test_detection_service_recomputes_when_marker_points_to_missing_result() -> None:
+    """If an idempotency marker is stale, the service should safely recompute."""
+    alert_repository = InMemoryAlertRepository()
+    processed_repository = InMemoryProcessedEventRepository()
+    event = SecurityEvent.model_validate(event_payload())
+    stale_detection_id = UUID("00000000-0000-0000-0000-000000000001")
+    processed_repository.mark_processed(event.event_id, stale_detection_id)
+    service = DetectionService(
+        alert_repository=alert_repository,
+        processed_event_repository=processed_repository,
+    )
+
+    result = service.detect(event)
+
+    assert result.detection_id != stale_detection_id
+    assert processed_repository.get_detection_id(event.event_id) == result.detection_id
