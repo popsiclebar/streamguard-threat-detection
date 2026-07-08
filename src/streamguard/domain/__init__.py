@@ -5,6 +5,7 @@ depending on API routes, streaming workers, databases, or infrastructure tools.
 """
 
 from streamguard.domain.detections import DetectionResult
+from streamguard.domain.dead_letters import DeadLetterMessage
 from streamguard.domain.events import SecurityEvent
 
-__all__ = ["DetectionResult", "SecurityEvent"]
+__all__ = ["DeadLetterMessage", "DetectionResult", "SecurityEvent"]

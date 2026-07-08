@@ -9,6 +9,7 @@ description = "Local-first AI threat detection pipeline MVP"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "confluent-kafka>=2.5,<3.0",
   "fastapi>=0.115,<1.0",
   "pydantic>=2.8,<3.0",
   "redis>=5.0,<7.0",

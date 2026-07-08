@@ -10,12 +10,18 @@ from functools import lru_cache
 from streamguard.config import AppSettings, load_settings
 from streamguard.infrastructure.memory import (
     InMemoryAlertRepository,
+    InMemoryMetricsRepository,
     InMemoryProcessedEventRepository,
 )
 from streamguard.infrastructure.redis_alerts import RedisAlertRepository
+from streamguard.infrastructure.redis_metrics import RedisMetricsRepository
 from streamguard.infrastructure.redis_state import RedisProcessedEventRepository
 from streamguard.services import DetectionService
-from streamguard.services.repositories import AlertRepository, ProcessedEventRepository
+from streamguard.services.repositories import (
+    AlertRepository,
+    MetricsRepository,
+    ProcessedEventRepository,
+)
 
 
 @lru_cache
@@ -56,6 +62,16 @@ def get_processed_event_repository() -> ProcessedEventRepository:
 
 
 @lru_cache
+def get_metrics_repository() -> MetricsRepository:
+    """Return the configured operational metrics repository."""
+    settings = get_settings()
+    if settings.alert_repository_backend == "redis":
+        return RedisMetricsRepository.from_url(settings.redis_url)
+
+    return InMemoryMetricsRepository()
+
+
+@lru_cache
 def get_detection_service() -> DetectionService:
     """Return the reusable detection service used by API requests.
 
@@ -65,4 +81,5 @@ def get_detection_service() -> DetectionService:
     return DetectionService(
         alert_repository=get_alert_repository(),
         processed_event_repository=get_processed_event_repository(),
+        metrics_repository=get_metrics_repository(),
     )

@@ -10,6 +10,7 @@ from uuid import UUID
 from streamguard.domain import DetectionResult, SecurityEvent
 from streamguard.infrastructure.memory import (
     InMemoryAlertRepository,
+    InMemoryMetricsRepository,
     InMemoryProcessedEventRepository,
 )
 from streamguard.services import DetectionService
@@ -127,3 +128,28 @@ def test_detection_service_recomputes_when_marker_points_to_missing_result() -> 
 
     assert result.detection_id != stale_detection_id
     assert processed_repository.get_detection_id(event.event_id) == result.detection_id
+
+
+def test_detection_service_records_metrics_for_new_and_duplicate_events() -> None:
+    """DetectionService should count new detections and idempotent duplicates."""
+    alert_repository = InMemoryAlertRepository()
+    processed_repository = InMemoryProcessedEventRepository()
+    metrics_repository = InMemoryMetricsRepository()
+    event = SecurityEvent.model_validate(
+        event_payload(destination_port=22, failed_connections=12, packet_count=20)
+    )
+    service = DetectionService(
+        alert_repository=alert_repository,
+        processed_event_repository=processed_repository,
+        metrics_repository=metrics_repository,
+    )
+
+    service.detect(event)
+    service.detect(event)
+
+    snapshot = metrics_repository.snapshot()
+    assert snapshot.processed_total == 1
+    assert snapshot.anomalies_total == 1
+    assert snapshot.duplicates_total == 1
+    assert snapshot.invalid_total == 0
+    assert snapshot.failed_total == 0

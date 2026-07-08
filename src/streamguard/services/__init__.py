@@ -5,6 +5,17 @@ level domain, feature, and model code. They keep business workflows reusable.
 """
 
 from streamguard.services.detection_service import DetectionService
-from streamguard.services.repositories import AlertRepository, ProcessedEventRepository
+from streamguard.services.repositories import (
+    AlertRepository,
+    MetricsRepository,
+    MetricsSnapshot,
+    ProcessedEventRepository,
+)
 
-__all__ = ["AlertRepository", "DetectionService", "ProcessedEventRepository"]
+__all__ = [
+    "AlertRepository",
+    "DetectionService",
+    "MetricsRepository",
+    "MetricsSnapshot",
+    "ProcessedEventRepository",
+]

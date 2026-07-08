@@ -5,6 +5,7 @@ coupling those services to a specific database. The first implementation is
 in-memory; a later milestone can add Redis behind the same interface.
 """
 
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -46,3 +47,37 @@ class ProcessedEventRepository(Protocol):
 
     def mark_processed(self, event_id: UUID, detection_id: UUID) -> None:
         """Remember which detection ID was produced for an event ID."""
+
+
+@dataclass(frozen=True)
+class MetricsSnapshot:
+    """Point-in-time operational counters for StreamGuard."""
+
+    processed_total: int = 0
+    anomalies_total: int = 0
+    duplicates_total: int = 0
+    invalid_total: int = 0
+    failed_total: int = 0
+
+
+class MetricsRepository(Protocol):
+    """Storage interface for operational counters.
+
+    Counters help local developers and future operators see what the service has
+    done without reading logs or inspecting storage internals.
+    """
+
+    def increment_processed(self, *, is_anomaly: bool) -> None:
+        """Record one newly processed detection result."""
+
+    def increment_duplicate(self) -> None:
+        """Record one idempotent duplicate event hit."""
+
+    def increment_invalid(self) -> None:
+        """Record one invalid event payload."""
+
+    def increment_failed(self) -> None:
+        """Record one failed processing attempt."""
+
+    def snapshot(self) -> MetricsSnapshot:
+        """Return current counter values."""

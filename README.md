@@ -42,7 +42,9 @@ The current Milestone 1 slice supports:
 - Store recent detection results in memory while the API process is running.
 - Optionally store recent detection results in Redis.
 - Track processed event IDs for idempotent repeated detection requests.
+- Track basic operational counters for processed, anomalous, and duplicate events.
 - Retrieve recent alerts and individual alert details through the API.
+- Replay sample JSONL security events into a Kafka-compatible broker.
 - Expose health and readiness endpoints.
 - Provide unit and API tests for core behavior.
 
@@ -131,6 +133,43 @@ docker compose up -d redis
 ALERT_REPOSITORY_BACKEND=redis python3 -m uvicorn apps.api.main:app --reload
 ```
 
+Start the local Kafka-compatible broker:
+
+```bash
+docker compose up -d redpanda
+```
+
+Create required Kafka-compatible topics:
+
+```bash
+python3 -m scripts.create_topics
+```
+
+Replay sample JSONL events to the raw security-events topic:
+
+```bash
+python3 -m apps.producer.main \
+  --input data/sample/events.jsonl \
+  --events-per-second 5
+```
+
+Run the detector worker against the raw topic:
+
+```bash
+python3 -m apps.detector.main --max-messages 2
+```
+
+The worker consumes from `security-events.raw`, calls the shared
+`DetectionService`, publishes completed results to
+`security-detections.completed`, and publishes malformed messages to
+`security-events.dead-letter`.
+
+Run the end-to-end streaming smoke test:
+
+```bash
+python3 -m scripts.smoke_test
+```
+
 Health checks:
 
 ```bash
@@ -162,6 +201,12 @@ Alert detail:
 curl http://localhost:8000/api/v1/alerts/{detection_id}
 ```
 
+Operational metrics:
+
+```bash
+curl http://localhost:8000/api/v1/metrics
+```
+
 Interactive API docs are available locally at:
 
 ```text
@@ -179,8 +224,13 @@ http://localhost:8000/docs
 - [x] Add Docker Compose Redis service.
 - [ ] Add Kafka-compatible event ingestion.
 - [x] Add Redis processed-event idempotency markers.
-- [ ] Add Redis operational counters.
-- [ ] Add dead-letter handling for invalid events.
+- [x] Add Redis operational counters.
+- [x] Add Kafka-compatible broker service.
+- [x] Add sample JSONL event producer.
+- [x] Add detector worker foundation.
+- [x] Add Kafka topic setup script.
+- [x] Add end-to-end streaming smoke test script.
+- [x] Add streaming dead-letter handling for invalid raw events.
 - [ ] Add CI with linting and tests.
 - [ ] Document architecture, limitations, and demo commands.
 

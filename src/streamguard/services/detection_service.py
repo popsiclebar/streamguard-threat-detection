@@ -12,7 +12,11 @@ from uuid import uuid4
 from streamguard.domain import DetectionResult, SecurityEvent
 from streamguard.features import extract_event_features
 from streamguard.models import BaselineAnomalyScorer
-from streamguard.services.repositories import AlertRepository, ProcessedEventRepository
+from streamguard.services.repositories import (
+    AlertRepository,
+    MetricsRepository,
+    ProcessedEventRepository,
+)
 
 
 BASELINE_MODEL_NAME = "baseline_rules"
@@ -32,6 +36,7 @@ class DetectionService:
         scorer: BaselineAnomalyScorer | None = None,
         alert_repository: AlertRepository | None = None,
         processed_event_repository: ProcessedEventRepository | None = None,
+        metrics_repository: MetricsRepository | None = None,
     ) -> None:
         """Create a detection service with an optional injected scorer.
 
@@ -41,11 +46,14 @@ class DetectionService:
         self._scorer = scorer or BaselineAnomalyScorer()
         self._alert_repository = alert_repository
         self._processed_event_repository = processed_event_repository
+        self._metrics_repository = metrics_repository
 
     def detect(self, event: SecurityEvent) -> DetectionResult:
         """Run the baseline detection workflow for one validated security event."""
         existing_result = self._find_existing_result(event)
         if existing_result is not None:
+            if self._metrics_repository is not None:
+                self._metrics_repository.increment_duplicate()
             return existing_result
 
         started_at = perf_counter()
@@ -75,6 +83,8 @@ class DetectionService:
             self._alert_repository.save(result)
         if self._processed_event_repository is not None:
             self._processed_event_repository.mark_processed(event.event_id, result.detection_id)
+        if self._metrics_repository is not None:
+            self._metrics_repository.increment_processed(is_anomaly=result.is_anomaly)
 
         return result
 

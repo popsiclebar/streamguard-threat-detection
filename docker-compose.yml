@@ -1,4 +1,35 @@
 services:
+  redpanda:
+    image: redpandadata/redpanda:v24.1.13
+    container_name: streamguard-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   redis:
     image: redis:7-alpine
     container_name: streamguard-redis
@@ -14,4 +45,5 @@ services:
       retries: 10
 
 volumes:
+  redpanda-data:
   redis-data:

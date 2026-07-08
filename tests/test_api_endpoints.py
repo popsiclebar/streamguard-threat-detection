@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from apps.api.dependencies import (
     get_alert_repository,
     get_detection_service,
+    get_metrics_repository,
     get_processed_event_repository,
 )
 from apps.api.main import create_app
@@ -19,6 +20,7 @@ def api_client() -> TestClient:
     get_detection_service.cache_clear()
     get_alert_repository.cache_clear()
     get_processed_event_repository.cache_clear()
+    get_metrics_repository.cache_clear()
     return TestClient(create_app())
 
 
@@ -193,3 +195,36 @@ def test_detection_endpoint_is_idempotent_for_repeated_event_id() -> None:
     assert second_response.status_code == 200
     assert second_response.json()["detection_id"] == first_response.json()["detection_id"]
     assert len(alerts_response.json()) == 1
+
+
+def test_metrics_endpoint_reports_detection_activity() -> None:
+    """The metrics endpoint should expose counters from detection activity."""
+    client = api_client()
+
+    before_response = client.get("/api/v1/metrics")
+    client.post(
+        "/api/v1/detections",
+        json=event_payload(destination_port=22, failed_connections=12, packet_count=20),
+    )
+    client.post(
+        "/api/v1/detections",
+        json=event_payload(destination_port=22, failed_connections=12, packet_count=20),
+    )
+    after_response = client.get("/api/v1/metrics")
+
+    assert before_response.status_code == 200
+    assert before_response.json() == {
+        "processed_total": 0,
+        "anomalies_total": 0,
+        "duplicates_total": 0,
+        "invalid_total": 0,
+        "failed_total": 0,
+    }
+    assert after_response.status_code == 200
+    assert after_response.json() == {
+        "processed_total": 1,
+        "anomalies_total": 1,
+        "duplicates_total": 1,
+        "invalid_total": 0,
+        "failed_total": 0,
+    }
