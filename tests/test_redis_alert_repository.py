@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from streamguard.domain import DetectionResult
-from streamguard.infrastructure.redis_alerts import RedisAlertRepository
+from streamguard.infrastructure.redis import RedisAlertRepository
 
 
 class FakeRedis:

@@ -11,6 +11,7 @@ from typing import Literal, Mapping
 
 
 AlertRepositoryBackend = Literal["memory", "redis"]
+DetectionHistoryBackend = Literal["none", "postgres"]
 
 
 @dataclass(frozen=True)
@@ -18,7 +19,9 @@ class AppSettings:
     """Runtime settings shared by API dependencies and future worker processes."""
 
     alert_repository_backend: AlertRepositoryBackend = "memory"
+    detection_history_backend: DetectionHistoryBackend = "none"
     redis_url: str = "redis://localhost:6379/0"
+    postgres_url: str = "postgresql://streamguard:streamguard@localhost:5432/streamguard"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_raw_topic: str = "security-events.raw"
     kafka_detection_topic: str = "security-detections.completed"
@@ -35,10 +38,18 @@ def load_settings(source: Mapping[str, str] | None = None) -> AppSettings:
     backend = values.get("ALERT_REPOSITORY_BACKEND", "memory").lower()
     if backend not in {"memory", "redis"}:
         raise ValueError("ALERT_REPOSITORY_BACKEND must be 'memory' or 'redis'")
+    history_backend = values.get("DETECTION_HISTORY_BACKEND", "none").lower()
+    if history_backend not in {"none", "postgres"}:
+        raise ValueError("DETECTION_HISTORY_BACKEND must be 'none' or 'postgres'")
 
     return AppSettings(
         alert_repository_backend=backend,
+        detection_history_backend=history_backend,
         redis_url=values.get("REDIS_URL", "redis://localhost:6379/0"),
+        postgres_url=values.get(
+            "POSTGRES_URL",
+            "postgresql://streamguard:streamguard@localhost:5432/streamguard",
+        ),
         kafka_bootstrap_servers=values.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         kafka_raw_topic=values.get("KAFKA_RAW_TOPIC", "security-events.raw"),
         kafka_detection_topic=values.get(

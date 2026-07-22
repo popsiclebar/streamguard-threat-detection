@@ -1,8 +1,8 @@
 """Repository interfaces used by StreamGuard services.
 
 Repository protocols define what application services need from storage without
-coupling those services to a specific database. The first implementation is
-in-memory; a later milestone can add Redis behind the same interface.
+coupling those services to a specific database. Concrete adapters can store
+recent operational state in memory or Redis and durable history in PostgreSQL.
 """
 
 from dataclasses import dataclass
@@ -33,6 +33,29 @@ class AlertRepository(Protocol):
 
     def get(self, detection_id: UUID) -> DetectionResult | None:
         """Return one detection result by ID, or None when it is absent."""
+
+
+class DetectionHistoryRepository(Protocol):
+    """Storage interface for durable detection-result history.
+
+    This repository is separate from `AlertRepository` on purpose. Alerts are a
+    short operational window for the API, while history is the long-lived record
+    we can later query for dashboards, analytics, model evaluation, and audits.
+    """
+
+    def save_detection(self, result: DetectionResult) -> None:
+        """Store one detection result durably."""
+
+    def get_detection(self, detection_id: UUID) -> DetectionResult | None:
+        """Return one durable detection result by ID, or None when absent."""
+
+    def list_detections(
+        self,
+        *,
+        limit: int = 100,
+        minimum_score: float | None = None,
+    ) -> list[DetectionResult]:
+        """Return durable detections, newest first, with optional score filtering."""
 
 
 class ProcessedEventRepository(Protocol):

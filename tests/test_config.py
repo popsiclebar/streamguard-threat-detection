@@ -43,10 +43,29 @@ def test_load_settings_accepts_redis_backend() -> None:
     assert settings.processed_event_ttl_seconds == 120
 
 
+def test_load_settings_accepts_postgres_detection_history() -> None:
+    """PostgreSQL history settings should be opt-in and separately configured."""
+    settings = load_settings(
+        {
+            "DETECTION_HISTORY_BACKEND": "postgres",
+            "POSTGRES_URL": "postgresql://user:pass@db.example.test:5432/streamguard",
+        }
+    )
+
+    assert settings.detection_history_backend == "postgres"
+    assert settings.postgres_url == "postgresql://user:pass@db.example.test:5432/streamguard"
+
+
 def test_load_settings_rejects_unknown_repository_backend() -> None:
     """Unknown repository backends should fail before the API starts."""
     with pytest.raises(ValueError, match="ALERT_REPOSITORY_BACKEND"):
         load_settings({"ALERT_REPOSITORY_BACKEND": "postgres"})
+
+
+def test_load_settings_rejects_unknown_detection_history_backend() -> None:
+    """Unknown durable history backends should fail before startup."""
+    with pytest.raises(ValueError, match="DETECTION_HISTORY_BACKEND"):
+        load_settings({"DETECTION_HISTORY_BACKEND": "redis"})
 
 
 def test_load_settings_rejects_non_positive_numbers() -> None:

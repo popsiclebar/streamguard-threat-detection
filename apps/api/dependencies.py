@@ -13,12 +13,16 @@ from streamguard.infrastructure.memory import (
     InMemoryMetricsRepository,
     InMemoryProcessedEventRepository,
 )
-from streamguard.infrastructure.redis_alerts import RedisAlertRepository
-from streamguard.infrastructure.redis_metrics import RedisMetricsRepository
-from streamguard.infrastructure.redis_state import RedisProcessedEventRepository
+from streamguard.infrastructure.postgres import PostgresDetectionHistoryRepository
+from streamguard.infrastructure.redis import (
+    RedisAlertRepository,
+    RedisMetricsRepository,
+    RedisProcessedEventRepository,
+)
 from streamguard.services import DetectionService
 from streamguard.services.repositories import (
     AlertRepository,
+    DetectionHistoryRepository,
     MetricsRepository,
     ProcessedEventRepository,
 )
@@ -72,6 +76,21 @@ def get_metrics_repository() -> MetricsRepository:
 
 
 @lru_cache
+def get_detection_history_repository() -> DetectionHistoryRepository | None:
+    """Return optional durable detection history storage.
+
+    Recent alert storage is still controlled separately by
+    `ALERT_REPOSITORY_BACKEND`. This provider adds PostgreSQL only when durable
+    history is explicitly enabled.
+    """
+    settings = get_settings()
+    if settings.detection_history_backend == "postgres":
+        return PostgresDetectionHistoryRepository.from_url(settings.postgres_url)
+
+    return None
+
+
+@lru_cache
 def get_detection_service() -> DetectionService:
     """Return the reusable detection service used by API requests.
 
@@ -82,4 +101,5 @@ def get_detection_service() -> DetectionService:
         alert_repository=get_alert_repository(),
         processed_event_repository=get_processed_event_repository(),
         metrics_repository=get_metrics_repository(),
+        detection_history_repository=get_detection_history_repository(),
     )

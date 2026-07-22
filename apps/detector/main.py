@@ -20,15 +20,24 @@ from streamguard.infrastructure.memory import (
     InMemoryMetricsRepository,
     InMemoryProcessedEventRepository,
 )
-from streamguard.infrastructure.redis_alerts import RedisAlertRepository
-from streamguard.infrastructure.redis_metrics import RedisMetricsRepository
-from streamguard.infrastructure.redis_state import RedisProcessedEventRepository
+from streamguard.infrastructure.postgres import PostgresDetectionHistoryRepository
+from streamguard.infrastructure.redis import (
+    RedisAlertRepository,
+    RedisMetricsRepository,
+    RedisProcessedEventRepository,
+)
 from streamguard.services import DetectionService, MetricsRepository
 from streamguard.services.stream_processor import StreamMessageProcessor
 
 
 def build_detection_service(settings: AppSettings) -> tuple[DetectionService, MetricsRepository]:
     """Build the detection service and metrics repository for the worker."""
+    detection_history_repository = None
+    if settings.detection_history_backend == "postgres":
+        detection_history_repository = PostgresDetectionHistoryRepository.from_url(
+            settings.postgres_url
+        )
+
     if settings.alert_repository_backend == "redis":
         alert_repository = RedisAlertRepository.from_url(
             settings.redis_url,
@@ -50,6 +59,7 @@ def build_detection_service(settings: AppSettings) -> tuple[DetectionService, Me
             alert_repository=alert_repository,
             processed_event_repository=processed_event_repository,
             metrics_repository=metrics_repository,
+            detection_history_repository=detection_history_repository,
         ),
         metrics_repository,
     )

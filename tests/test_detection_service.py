@@ -16,6 +16,39 @@ from streamguard.infrastructure.memory import (
 from streamguard.services import DetectionService
 
 
+class FakeDetectionHistoryRepository:
+    """Small fake durable history repository for DetectionService tests."""
+
+    def __init__(self) -> None:
+        """Create an empty fake history store."""
+        self.saved_results: list[DetectionResult] = []
+
+    def save_detection(self, result: DetectionResult) -> None:
+        """Remember a saved detection result."""
+        self.saved_results.append(result)
+
+    def get_detection(self, detection_id: UUID) -> DetectionResult | None:
+        """Return a saved detection by ID."""
+        for result in self.saved_results:
+            if result.detection_id == detection_id:
+                return result
+        return None
+
+    def list_detections(
+        self,
+        *,
+        limit: int = 100,
+        minimum_score: float | None = None,
+    ) -> list[DetectionResult]:
+        """Return saved detections using the durable-history interface."""
+        results = [
+            result
+            for result in self.saved_results
+            if minimum_score is None or result.anomaly_score >= minimum_score
+        ]
+        return results[:limit]
+
+
 def event_payload(**overrides: object) -> dict[str, object]:
     """Build a valid event payload and allow focused tests to override fields."""
     payload: dict[str, object] = {
@@ -93,6 +126,17 @@ def test_detection_service_saves_result_when_repository_is_configured() -> None:
     result = service.detect(event)
 
     assert repository.list_recent() == [result]
+
+
+def test_detection_service_saves_durable_history_when_configured() -> None:
+    """DetectionService should write new detections to optional durable history."""
+    history_repository = FakeDetectionHistoryRepository()
+    event = SecurityEvent.model_validate(event_payload())
+    service = DetectionService(detection_history_repository=history_repository)
+
+    result = service.detect(event)
+
+    assert history_repository.saved_results == [result]
 
 
 def test_detection_service_returns_existing_result_for_duplicate_event_id() -> None:

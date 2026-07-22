@@ -1,8 +1,7 @@
-"""Redis-backed operational state repositories for StreamGuard.
+"""Redis-backed processed-event repository for StreamGuard.
 
-This module stores short-lived processing state, such as event idempotency
-markers. These keys help workers and APIs avoid duplicate processing without
-turning Redis into the long-term source of truth.
+Processed-event markers are short-lived idempotency pointers from input event ID
+to detection result ID.
 """
 
 from typing import Protocol
@@ -12,7 +11,7 @@ from redis import Redis
 
 
 class RedisStateClient(Protocol):
-    """Small subset of Redis commands needed for operational state."""
+    """Small subset of Redis commands needed for processed-event state."""
 
     def setex(self, name: str, time: int, value: str) -> object:
         """Store a value with a TTL."""

@@ -5,7 +5,7 @@ doing while avoiding a full observability stack in the early learning phases.
 """
 
 from streamguard.infrastructure.memory import InMemoryMetricsRepository
-from streamguard.infrastructure.redis_metrics import RedisMetricsRepository
+from streamguard.infrastructure.redis import RedisMetricsRepository
 from streamguard.services import MetricsSnapshot
 
 

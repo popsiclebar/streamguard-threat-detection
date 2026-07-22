@@ -1,183 +1,139 @@
 # StreamGuard
 
-## AI Threat Detection Pipeline
+## Event-Driven Threat Detection Pipeline
 
-StreamGuard is a local-first, API-first threat-detection pipeline for learning
-and demonstrating production-style AI software engineering. The project focuses
-on turning security events into structured anomaly-detection results through a
-small but realistic backend system.
+StreamGuard is a local-first backend for ingesting network-security events and
+producing structured anomaly-detection results. It supports both synchronous
+HTTP requests and Kafka-compatible event streams while keeping validation,
+feature extraction, scoring, and persistence behind shared application
+services.
 
-## Table of Contents
+The project demonstrates an event-driven service architecture built around
+versioned data contracts, deterministic feature extraction, interchangeable
+infrastructure adapters, idempotent processing, and observable failure paths.
+Detection is exposed through one application boundary, allowing model
+implementations to evolve independently of transport and storage concerns.
 
-- [About The Project](#about-the-project)
-- [Built With](#built-with)
-- [Getting Started](#getting-started)
-- [Usage](#usage)
-- [Roadmap](#roadmap)
+## Contents
+
+- [Architecture](#architecture)
 - [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+- [Capabilities](#capabilities)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+- [Configuration](#configuration)
+- [Streaming Workflow](#streaming-workflow)
+- [Development and Verification](#development-and-verification)
+- [Operational Semantics](#operational-semantics)
+- [Roadmap](#roadmap)
 
-## About The Project
+## Architecture
 
-StreamGuard simulates a lightweight threat-detection workflow:
+```text
+SYNCHRONOUS
+HTTP client ---> FastAPI ---> DetectionService ---> HTTP response
+                    |                 |
+                    |                 +---> feature extraction ---> scoring
+                    |                 +---> repository interfaces
+                    |                              |
+                    +--- alerts / metrics          +---> Memory or Redis
+                                                   +---> PostgreSQL history
 
-1. Security events are submitted through a FastAPI endpoint.
-2. Events are validated and transformed into structured features.
-3. A transparent baseline component scores suspicious activity.
-4. Recent detection results are stored in process-local memory for retrieval.
-5. FastAPI exposes endpoints for direct detection, recent alerts, and health checks.
-6. Later milestones will add Kafka ingestion, Redis state, and vector search.
+STREAMING
+JSONL ---> Producer ---> Kafka raw topic ---> Detector worker
+                                                  |
+                         +------------------------+------------------+
+                         | valid                                     | invalid
+                         v                                           v
+                DetectionService                           dead-letter topic
+                         |
+                         v
+                completed-detection topic
+```
 
-### Current Capabilities
+Both ingestion paths converge on `DetectionService`. The service owns the
+feature-to-result workflow and depends only on repository protocols; FastAPI,
+Kafka, Redis, and PostgreSQL remain infrastructure details. The worker publishes
+valid results to the completed topic and preserves invalid input as structured
+dead-letter records for inspection or replay.
 
-The current Milestone 1 slice supports:
+## Project Structure
 
-- Submit security events through a FastAPI endpoint.
-- Validate incoming events with typed Pydantic schemas.
-- Transform events into structured features for anomaly scoring.
-- Score events with an honest rule-based baseline.
-- Return versioned detection results.
-- Store recent detection results in memory while the API process is running.
-- Optionally store recent detection results in Redis.
-- Track processed event IDs for idempotent repeated detection requests.
-- Track basic operational counters for processed, anomalous, and duplicate events.
-- Retrieve recent alerts and individual alert details through the API.
-- Replay sample JSONL security events into a Kafka-compatible broker.
-- Expose health and readiness endpoints.
-- Provide unit and API tests for core behavior.
+```text
+streamguard-threat-detection/
+|-- apps/
+|   |-- api/            # FastAPI application and routes
+|   |-- detector/       # Kafka-compatible detection worker
+|   `-- producer/       # JSONL event replay CLI
+|-- src/streamguard/
+|   |-- domain/         # Versioned input and output schemas
+|   |-- features/       # Feature contract and preprocessing
+|   |-- models/         # Explainable baseline scorer
+|   |-- services/       # Application workflows and repository protocols
+|   `-- infrastructure/ # Memory, Redis, PostgreSQL, and Kafka adapters
+|-- tests/              # Unit, integration-style, and API tests
+|-- data/sample/        # Reproducible example events
+|-- scripts/            # Topic setup and streaming smoke test
+|-- docker-compose.yml
+`-- pyproject.toml
+```
 
-Planned later milestones include Kafka-compatible streaming ingestion, Redis
-operational state, persistence across restarts, dead-letter handling, Qdrant
-similarity search, and trained scikit-learn/PyTorch model backends.
+## Capabilities
 
-## Built With
+- Accept and validate versioned network-security events through FastAPI.
+- Extract a deterministic 13-feature vector from each accepted event.
+- Produce explainable anomaly scores with a configurable rule-based threshold.
+- Retrieve recent results and filter alerts by minimum score.
+- Store recent alerts, idempotency markers, and counters in memory or Redis.
+- Optionally persist complete detection results to PostgreSQL using queryable
+  columns and a JSONB representation of the versioned result.
+- Replay JSONL events into a Kafka-compatible Redpanda broker.
+- Consume raw events and publish completed detection results.
+- Route malformed streamed events to a dead-letter topic.
+- Run the service stack locally with Docker Compose.
 
-Current stack:
+## Technology Stack
 
-- Python
-- FastAPI
+- Python 3.12
+- FastAPI and Uvicorn
 - Pydantic
-- pytest
-- Ruff
+- Redpanda / Kafka (`confluent-kafka`)
+- Redis
+- PostgreSQL / psycopg
+- Docker Compose
+- pytest and Ruff
 
-Planned additions:
+## Quick Start
 
-- Kafka-compatible local broker
-- Qdrant
-- Docker / Docker Compose for the full local stack
-- scikit-learn
-- PyTorch
-
-## Getting Started
-
-### Prerequisites
-
-Local requirements:
+### Requirements
 
 - Python 3.12+
 - Git
+- Docker Desktop or another Docker-compatible runtime for Redis, Redpanda, and
+  PostgreSQL
 
-Docker Desktop or another Docker-compatible runtime will be needed for later
-Kafka and Qdrant milestones. Redis can already be run with Docker Compose.
-
-### Installation
-
-Clone the repository:
+Clone and install the project:
 
 ```bash
 git clone git@github.com:popsiclebar/streamguard-threat-detection.git
 cd streamguard-threat-detection
-```
-
-Create a local environment:
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
 python3 -m pip install -e ".[dev]"
 ```
 
-## Usage
-
-Run tests:
-
-```bash
-python3 -m pytest -q
-```
-
-Run lint checks:
-
-```bash
-python3 -m ruff check apps src tests
-```
-
-Run the direct API workflow:
+Run the default in-memory API:
 
 ```bash
 python3 -m uvicorn apps.api.main:app --reload
 ```
 
-By default, recent alerts and processed-event markers are stored in process
-memory. To use Redis for that operational state, start Redis and enable the
-Redis repository backend:
+Interactive OpenAPI documentation is available at
+`http://localhost:8000/docs`.
 
-```bash
-docker compose up -d redis
-ALERT_REPOSITORY_BACKEND=redis python3 -m uvicorn apps.api.main:app --reload
-```
+### Direct Detection
 
-Start the local Kafka-compatible broker:
-
-```bash
-docker compose up -d redpanda
-```
-
-Create required Kafka-compatible topics:
-
-```bash
-python3 -m scripts.create_topics
-```
-
-Replay sample JSONL events to the raw security-events topic:
-
-```bash
-python3 -m apps.producer.main \
-  --input data/sample/events.jsonl \
-  --events-per-second 5
-```
-
-Run the detector worker against the raw topic:
-
-```bash
-python3 -m apps.detector.main --max-messages 2
-```
-
-The worker consumes from `security-events.raw`, calls the shared
-`DetectionService`, publishes completed results to
-`security-detections.completed`, and publishes malformed messages to
-`security-events.dead-letter`.
-
-Run the end-to-end streaming smoke test:
-
-```bash
-python3 -m scripts.smoke_test
-```
-
-Health checks:
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/health/ready
-```
-
-Detection request:
+Submit the included example event:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/detections \
@@ -185,89 +141,149 @@ curl -X POST http://localhost:8000/api/v1/detections \
   -d @data/sample/example_event.json
 ```
 
-Posting the same `event_id` again returns the original detection result while
-the processed-event marker and alert detail are still retained.
+Posting the same retained `event_id` again returns the original detection
+instead of creating a duplicate.
 
-Recent alerts:
+Inspect service state:
 
 ```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/ready
 curl http://localhost:8000/api/v1/alerts
 curl "http://localhost:8000/api/v1/alerts?minimum_score=0.7"
-```
-
-Alert detail:
-
-```bash
-curl http://localhost:8000/api/v1/alerts/{detection_id}
-```
-
-Operational metrics:
-
-```bash
 curl http://localhost:8000/api/v1/metrics
 ```
 
-Interactive API docs are available locally at:
+Retrieve one result with `GET /api/v1/alerts/{detection_id}`.
 
-```text
-http://localhost:8000/docs
+## API Reference
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/detections` | Validate and score one security event |
+| `GET` | `/api/v1/alerts` | List recent detections with optional `limit` and `minimum_score` filters |
+| `GET` | `/api/v1/alerts/{detection_id}` | Retrieve one detection result |
+| `GET` | `/api/v1/metrics` | Read processed, anomalous, duplicate, invalid, and failed counters |
+| `GET` | `/health/live` | Confirm that the API process is running |
+| `GET` | `/health/ready` | Read application readiness state |
+
+All request and response bodies use versioned Pydantic schemas. FastAPI exposes
+the generated OpenAPI schema at `/openapi.json` and interactive documentation at
+`/docs`.
+
+## Storage Backends
+
+Start the optional storage services:
+
+```bash
+docker compose up -d redis postgres
 ```
+
+Run the API with Redis operational state and durable PostgreSQL history:
+
+```bash
+ALERT_REPOSITORY_BACKEND=redis \
+DETECTION_HISTORY_BACKEND=postgres \
+python3 -m uvicorn apps.api.main:app --reload
+```
+
+Memory remains the default alert backend, and durable history is disabled by
+default. See `.env.example` for all supported settings.
+
+## Configuration
+
+StreamGuard is configured through environment variables. Defaults support a
+zero-infrastructure API run; external services are enabled explicitly.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ALERT_REPOSITORY_BACKEND` | `memory` | Operational-state adapter: `memory` or `redis` |
+| `DETECTION_HISTORY_BACKEND` | `none` | Durable-history adapter: `none` or `postgres` |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
+| `POSTGRES_URL` | local `streamguard` database | PostgreSQL connection URL |
+| `RECENT_ALERT_LIMIT` | `100` | Maximum number of retained recent results |
+| `ALERT_TTL_SECONDS` | `86400` | Redis alert retention period |
+| `PROCESSED_EVENT_TTL_SECONDS` | `86400` | Redis idempotency-marker retention period |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka-compatible broker address |
+| `KAFKA_RAW_TOPIC` | `security-events.raw` | Input event topic |
+| `KAFKA_DETECTION_TOPIC` | `security-detections.completed` | Completed-result topic |
+| `KAFKA_DEAD_LETTER_TOPIC` | `security-events.dead-letter` | Invalid-payload topic |
+| `PRODUCER_EVENTS_PER_SECOND` | `5` | Default replay rate for the producer CLI |
+
+## Streaming Workflow
+
+Start Redpanda and create the required topics:
+
+```bash
+docker compose up -d redpanda
+python3 -m scripts.create_topics
+```
+
+In separate terminals, replay the sample events and run the detector:
+
+```bash
+python3 -m apps.producer.main \
+  --input data/sample/events.jsonl \
+  --events-per-second 5
+```
+
+```bash
+python3 -m apps.detector.main --max-messages 2
+```
+
+The worker consumes `security-events.raw`, publishes valid results to
+`security-detections.completed`, and sends invalid payloads to
+`security-events.dead-letter`.
+
+Run the automated streaming smoke test after the broker is ready:
+
+```bash
+python3 -m scripts.smoke_test
+```
+
+## Development and Verification
+
+Run the automated test suite:
+
+```bash
+python3 -m pytest -q
+```
+
+Run static lint checks:
+
+```bash
+python3 -m ruff check apps src tests scripts
+```
+
+The test suite covers domain validation, feature extraction, baseline scoring,
+service orchestration, repository adapters, API endpoints, Kafka serialization,
+worker behavior, configuration, and the smoke-test helper.
+
+Current repository status: **87 tests passing** and **Ruff checks passing**.
+
+## Operational Semantics
+
+- **Scoring:** The baseline scorer produces deterministic, explainable results
+  against the versioned feature contract. Offline training, calibrated model
+  thresholds, and predictive evaluation are separate roadmap items.
+- **Delivery:** The worker commits consumed messages after processing. The
+  current pipeline does not claim end-to-end exactly-once delivery.
+- **Idempotency:** Duplicate suppression is bounded by the retention of both the
+  processed-event marker and its associated alert result.
+- **Readiness:** The readiness endpoint reports application state; it does not
+  currently probe Redis, PostgreSQL, or Kafka.
+- **Observability:** Repository-backed counters provide local operational
+  insight. Centralized metrics, tracing, and structured logs are not configured.
+- **Deployment:** Docker Compose provisions a reproducible development stack;
+  production orchestration, secrets management, and horizontal scaling are out
+  of scope for the current version.
 
 ## Roadmap
 
-- [x] Define versioned security-event and detection-result schemas.
-- [x] Implement feature extraction and baseline anomaly scoring.
-- [x] Add FastAPI health and detection endpoints.
-- [x] Add in-memory recent alert retrieval.
-- [x] Add unit and API tests.
-- [x] Add Redis-backed recent alert repository.
-- [x] Add Docker Compose Redis service.
-- [ ] Add Kafka-compatible event ingestion.
-- [x] Add Redis processed-event idempotency markers.
-- [x] Add Redis operational counters.
-- [x] Add Kafka-compatible broker service.
-- [x] Add sample JSONL event producer.
-- [x] Add detector worker foundation.
-- [x] Add Kafka topic setup script.
-- [x] Add end-to-end streaming smoke test script.
-- [x] Add streaming dead-letter handling for invalid raw events.
-- [ ] Add CI with linting and tests.
-- [ ] Document architecture, limitations, and demo commands.
-
-## Project Structure
-
-```text
-streamguard-threat-detection/
-├── apps/
-│   ├── api/
-│   ├── detector/
-│   └── producer/
-├── src/
-│   └── streamguard/
-├── tests/
-├── data/
-│   └── sample/
-├── artifacts/
-├── deploy/
-├── scripts/
-├── .env.example
-├── pyproject.toml
-└── README.md
-```
-
-## Contributing
-
-This is currently a personal learning project. Suggestions are welcome, but the
-main development goal is to keep the system small, understandable, and runnable
-locally.
-
-If you want to propose a change:
-
-1. Fork the project.
-2. Create a feature branch.
-3. Make a focused change.
-4. Open a pull request with a clear explanation.
-
-## License
-
-No license has been selected yet.
+- Add continuous integration for tests and linting.
+- Add dependency-aware readiness checks and structured application logging.
+- Strengthen worker retry, delivery-confirmation, and shutdown behavior.
+- Add database migrations and richer indexes for detection history.
+- Introduce a scorer protocol and a trained scikit-learn anomaly detector.
+- Add a reproducible training and evaluation pipeline with versioned artifacts.
+- Report precision, recall, F1, and false-positive rate on held-out labeled data.

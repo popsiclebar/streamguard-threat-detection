@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from streamguard.infrastructure.memory import InMemoryProcessedEventRepository
-from streamguard.infrastructure.redis_state import RedisProcessedEventRepository
+from streamguard.infrastructure.redis import RedisProcessedEventRepository
 
 
 class FakeRedis:
